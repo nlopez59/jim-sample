@@ -1,0 +1,6 @@
+{
+    "recommendations": [
+        "ibm.developer-for-zos-on-vscode-extension-pack", // IBM z/OS dev bundle
+    ],
+    "unwantedRecommendations": []
+}

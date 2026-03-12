@@ -1,0 +1,22 @@
+{
+    
+   
+    "COMMENT": "Example Open Editor & DBB settings. update HLQ and USS dir to user's settings",
+    "zopeneditor.userbuild.userSettings": {
+      "dbbWorkspace": "/u/ibmuser/dbb_stageGit_wksp-v32-v3",
+      "dbbLogDir": "/u/ibmuser/dbb_stageGit_wksp-v32-v3",
+      "dbbHlq": "IBMUSER.VSCODE",
+      "dbbDefaultZappProfile": "dbb-userbuild"       
+    },
+    
+    "zopeneditor.zowe": {
+        "defaultCliProfile": "rse",
+        "defaultSshProfile": ""
+    },
+    
+    "editor.guides.indentation": false,    
+    "editor.rulers": []
+ 
+    
+   
+}

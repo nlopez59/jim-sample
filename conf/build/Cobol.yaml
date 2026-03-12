@@ -1,0 +1,264 @@
+
+---
+### 
+# Cobol language configuration  -v2
+#  - support for log encoding in UTF-8 for view fro ma pipeline 
+#  - example of locking down comilerParms from Developer update. 
+#  - added 
+####
+
+version: 1.0.0
+tasks:
+  # Cobol Language task
+  - language: Cobol
+
+    # source files pattern selected for this language file 
+    sources:
+      # - "**/cobol/*.cbl" 
+      # new path to include   .cbl runner builds?
+      - "**/*.cbl" 
+            
+    # overridable variables - see groovy script cliLogging 
+    variables:  
+     
+      # New  (3/2/26) section to enable pgm -level overrides (Note:  the doc suggests the folder is called config. I used .dbb_processor)
+      # See test case for asample.cbl 
+      - name: languageConfigurationSource
+        value: ${APP_DIR}/source/.dbb_processor/${FILE_NAME}.yaml
+
+      # Set the Wazi Deploy DB2 bind type 
+      # DBRM is the default type for Package binds. 
+      # For Plan binds, set $isBindPlan to true in dbb-app.yaml. 
+      - name: DBRM_DeployType
+        value: DBRM      
+        select:
+          - condition: { exists: "isBindPlan" }            
+            value: DBRMP 
+
+
+      # conditional variable builds compile parameters i.e CICS,SQL      
+      # Example restricting dev overrides: When restricted=true, a build will failed with "BGZZB0027E Layer 2 attempted to overwrite the restricted key 'compileParms'."
+      # njl - Mod: Added ${defaultParms} to include values from dbb-app.yaml and merge then with the conditional vars below 
+      - name: compileParms
+        #restricted: false
+        #value: ${userParms}   # Values can be passed from dbb-app.yaml - disabled for now 
+        
+        # append compiler options  
+        # ref: https://www.ibm.com/docs/en/dbb/3.0?topic=concepts-conditions
+        append:
+          - condition: ${IS_CICS}
+            value: CICS
+
+          - condition: ${IS_SQL}
+            value: SQL
+
+          - condition: 
+              exists: errPrefix
+            value: ADATA,EX(ADX(ELAXMGUX))
+
+          - condition: 
+              exists: debug
+              eval: ${debug}
+            value: TEST
+            
+      # flag to perform linkedit
+      - name: doLinkEdit
+        value: true
+        
+      # default link edit parameters
+      - name: linkEditParms
+        value: MAP,RENT,COMPAT(PM5)
+
+
+      # flag to scan the load module for static link dependencies  
+      - name: scanLoadModule
+        value: true
+        
+
+      # Dependency search path for 2 repositories the main app repo and a Common repo with shared copybooks (njl)
+      # To add one or more repo to a main app build. clone the repos under the workspace dir and:
+      #  - Chg zapp.yaml to resolve dependent copybooks, cobol,yaml to define the sourceDirs and depend path
+      #  Var ref:
+      #  - WORKSPACE:    top folder for all repos and artifacts 
+      #  - APP_DIR_NAME: main app repo folder name full path and can contain shared repos as sub dirs
+      #  - APP_DIR:      The root folder of the main application relative to WORKSPACE 
+      #  - APPLICATION:  the app name defined in the dbb-app.yaml "name:" var and also the subfolder for all main source code 
+      #
+      #  Provide a generic searchPath that includes common repo and main poc-app copybooks for vsCode or Pipelines       
+      ###
+      - name: dependencySearchPath
+        value: > 
+          search:${WORKSPACE}/?path=${APP_DIR_NAME}/**/*.cpy;                  
+        
+
+      
+        
+    # datasets that need to be created / validated for this language configuration
+    datasets:
+      - name: ${HLQ}.COBOL
+        options: cyl space(1,1) lrecl(80) dsorg(PO) recfm(F,B) dsntype(library)
+      - name: ${HLQ}.COPY
+        options: cyl space(1,1) lrecl(80) dsorg(PO) recfm(F,B) dsntype(library)
+      - name: ${HLQ}.BMS.COPY
+        options: cyl space(1,1) lrecl(80) dsorg(PO) recfm(F,B) dsntype(library)
+      - name: ${HLQ}.DBRM
+        options: cyl space(1,1) lrecl(80) dsorg(PO) recfm(F,B) dsntype(library)
+      - name: ${HLQ}.OBJ
+        options: cyl space(1,1) lrecl(80) dsorg(PO) recfm(F,B) dsntype(library)
+      - name: ${HLQ}.LOAD
+        options: cyl space(1,1) dsorg(PO) recfm(U) blksize(32760) dsntype(library)
+
+      # NJL - used by my tsoExec demo
+      - name: ${HLQ}.ISPFGW.LIST 
+        options: cyl space(1,1) dsorg(PS) lrecl(121) recfm(f,b)  blksize(0) 
+
+
+    # list of steps to execute for each program processed by this language configuration
+    steps:
+
+      # Copy build file and dependency files to data sets
+      - step: copySrc
+        type: copy
+        source: ${WORKSPACE}/${FILE}
+        target: //'${HLQ}.COBOL(${MEMBER})'
+        dependencyCopy:
+          - search: ${dependencySearchPath}
+            mappings:
+              - source: "**/*"
+                dataset: ${HLQ}.COPY
+
+
+    
+      # COBOL compile step     
+      # Ref: https://www.ibm.com/docs/en/dbb/3.0?topic=step-dds     
+      - step: compile
+        type: mvs
+        pgm: IGYCRCTL
+        parm: ${compileParms}
+      # DBB v3 does not detect 8 so use 7
+        maxRC: 7
+        dds:
+          - { name: "SYSIN",   dsn: "${HLQ}.COBOL(${MEMBER})", options: "shr", input: true }
+          - { name: "SYSLIN",  dsn: "${HLQ}.OBJ(${MEMBER})", options: "shr", output: true }
+          - { name: "TASKLIB", dsn: "${SIGYCOMP}", options: "shr" }
+          - {                  dsn: "${SDFHLOAD}", condition: "${IS_CICS}", options: "shr" }
+          - {                  dsn: "${SDSNLOAD}", condition: "${IS_SQL}", options: "shr" }
+          - {                  dsn: "${SFELLOAD}", condition: { exists: "SFELLOAD" }, options: "shr" }
+         # - { name: "SYSPRINT", log: "${LOGS}/${MEMBER}-${STEP}.cbl.log", options: "cyl space(5,5) unit(vio) blksize(133) lrecl(133) recfm(f,b) new", logEncoding: "${logEncoding}" }          
+          - { name: "SYSPRINT", log: "${LOGS}/${MEMBER}-${STEP}.cbl.log", options: "cyl space(5,5) unit(vio) blksize(133) lrecl(133) recfm(f,b) new", logEncoding: "UTF-8" }          
+          - { name: "SYSMDECK", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT1", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT2", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT3", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT4", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT5", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT6", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT7", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT8", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new"}
+          - { name: "SYSUT9", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT10", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT11", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT12", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT13", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT14", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT15", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT16", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSUT17", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "SYSLIB", dsn: "${HLQ}.COPY", options: "shr" }
+          - {                 dsn: "${HLQ}.BMS.COPY", options: "shr" }
+          - {                 dsn: "${SDFHCOB}", condition: "${IS_CICS}", options: "shr" }
+          - {                 dsn: "${SCSQCOBC}", condition: "${IS_MQ}", options: "shr" }
+          # add for TAZ EDT TH Builds
+          - {                 dsn: "EQAW.SEQASAMP", options: "shr" }
+           
+          
+          # NJL - Below is the origianl line that I mod'ed to Demo how dev's can define a Paln vs Package bind 
+          # The app-app.yaml has a LangCoinf rules to override the default bind package deployment menthod (DBRM) with DBRMP for Plan Binds
+          # The Wazi Deploy Method uses that Deploy type to run the assign bind cmd 
+          # - { name: "DBRMLIB", dsn: "${HLQ}.DBRM(${MEMBER})", condition: "${IS_SQL}", options: "shr", output: true, deployType: "DBRM" }          
+          - { name: "DBRMLIB", dsn: "${HLQ}.DBRM(${MEMBER})", condition: "${IS_SQL}", options: "shr", output: true, deployType: "${DBRM_DeployType}" }          
+          
+          
+          
+
+
+          - { name: "SYSADATA", condition: { exists: "errPrefix" }, options: "DUMMY" }
+          - { name: "SYSXMLSD", condition: { exists: "errPrefix" }, dsn: "${HLQ}.${errPrefix}.SYSXMLSD.XML", options: "tracks space(200,40) dsorg(PS) blksize(27998) lrecl(16383) recfm(v,b) new keep" }
+
+
+      # Link-Edit step
+      - step: linkEdit
+        type: mvs
+        pgm: IEWBLINK
+        parm: ${linkEditParms}
+        condition: ${doLinkEdit}
+        maxRC: 0
+        dds:
+          - { name: "SYSLIN", dsn: "${HLQ}.OBJ(${MEMBER})", options: "shr" }
+          - { name: "SYSLMOD", dsn: "${HLQ}.LOAD(${MEMBER})", options: "shr", output: true, deployType: "LOAD", scan: "${scanLoadModule}" }
+          # - { name: "SYSPRINT", log: "${LOGS}/${MEMBER}-${STEP}.cbl.log", options: "cyl space(5,5) unit(vio) blksize(133) lrecl(133) recfm(f,b) new", logEncoding: "${logEncoding}" }
+          - { name: "SYSPRINT", log: "${LOGS}/${MEMBER}-${STEP}.cbl.log", options: "cyl space(5,5) unit(vio) blksize(133) lrecl(133) recfm(f,b) new", logEncoding: "UTF-8" }
+          - { name: "SYSUT1", options: "cyl space(5,5) unit(vio) blksize(80) lrecl(80) recfm(f,b) new" }
+          - { name: "RESLIB", condition: { exists: RESLIB }, options: "shr" }
+          - { name: "SYSLIB", dsn: "${HLQ}.OBJ", options: "shr" }
+          - {                 dsn: "${SCEELKED}", options: "shr" }
+          - {                 dsn: "${SDFHLOAD}", condition: "${IS_CICS}", options: "shr" }
+          - {                 dsn: "${SDSNLOAD}", condition: "${IS_SQL}", options: "shr" }
+
+    # Run a DB2 bind package in a User Build Lifecycle (Note: Pipeline use impact lifecycle and Wazi Deploy for binds)
+    # Ref: https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=step-type-tso
+    
+    # DBB uses the zOS Legacy TSO/ISPF Client Gateway(GW) facility for step type 'tso' and 'ispf'  
+    # Additional DBB configuration of the GW interface is required when using these types of steps.     
+    # Quick start steps: 
+    #  - mkdir "mkdir /var/ispf/WORKAREA  "   with chmod 755
+    #  - cp /usr/lpp/ispf/bin/ISPZXENV $DBB_CONF and add $DBB_CONF to the $PATH     
+    #  - add the DB2 system stepli to ISPZXENV. Accept the default for all other options 
+     
+    # Ref: https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=customization-ispf-client-gateway-ispzxenv 
+    #      https://www.ibm.com/docs/en/zos/3.2.0?topic=gateway-customizing-legacy-ispf
+
+    # dds:
+    #   CMDSCP: is allocated DBB to stage the command in afile for execution under TSO  
+    #   SYSPROC: is the TSO command's PDS 
+    #   log: stores the TSO output systsprt log and copied by OpenEdit to the local logs folder 
+
+      - step: TSOExec_Bind
+        type: tso 
+       
+        # DBB$BIND is managed by DBB's transfer.yaml to 'copy' the source from this wkspace /source/rexx to ${HLQ}.REXX 
+        # Note the sample rexx binds packages only 
+        command: "DBB$BIND ${HLQ}.DBRM,${MEMBER}"  
+        
+        # Conditon are like if statements using DBB or user created name/value variables 
+        # ref: https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=concepts-conditions#conditional-expressions
+        condition: ${IS_SQL} && (${LIFECYCLE} == 'user')
+        logLevel: 2
+        maxRC: 8               
+        
+        log: "${LOGS}/${MEMBER}-${STEP}.DB2_Bind.log"
+        dds:          
+          # the command string is copied to this dataset and then executed on TSO via the GW
+          - { name: 'CMDSCP',   dsn: '${HLQ}.ISPFGWY.EXEC', options: 'shr' }
+          
+          # PDS for the DBB$BIND cmd 
+          - { name: 'SYSPROC',   dsn: '${HLQ}.REXX', options: 'shr' }
+ 
+    # Run a CICS newcopy for User Build Lifecycles (Pipelines use impact lifecycle and Wazi Deploy for newcopy)
+    # This example shows DBB's ablity to run zOS Operator cmds. In this case from the User Build LiefeCycle.
+    # It is meant as an example. But if the user has access to execute OPER cmds, they can use it to newcopy a program after a build. 
+    # Ref: https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=step-type-unix
+    #
+      - step: Unix_NewCopy
+        type: unix      
+        condition: ${IS_CICS} && (${LIFECYCLE} == 'user'   | ${LIFECYCLE} == 'file'  )           
+        command: "sh"
+        options:
+          - "-c"
+          - "opercmd 'F CICSTS63,CEMT SET PROG(${MEMBER}) NEW '"          
+        log: "${LOGS}/${MEMBER}-${STEP}.CICS_newcopy.log"
+        mergeErrors: true
+
+        ## As an alternative, replace th oper cmd with a CICS CMCI rest call like this 
+        ## options: 
+        ##     curl -v -k -u ibmuser:***** -H 'Content-Type:application/json' -d "<request><action name='NEWCOPY'/></request>"   -X PUT "https://zos:8154/CICSSystemManagement/CICSProgram/CICSTS63?CRITERIA=(PROGRAM=EPSMLIS)"

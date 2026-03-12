@@ -1,0 +1,162 @@
+---
+### 
+# Sample zBuilder language task and variable declarations (njl v1.a)
+# Simulating cobol v4 with db2 precompile as a pre-processing steps ... wip
+### 
+version: 1.0.0
+
+###
+# Import language task configurations
+###
+include:
+  - file: Transfer.yaml
+  - file: BMS.yaml
+  - file: Cobol.yaml    
+  - file: Assembler.yaml    
+  - file: PLI.yaml
+  
+
+### 
+# stage Languages: This stage groups all the supported lang yaml files for a lifecylce  (njl) 
+### 
+tasks: 
+  - stage: Languages
+    tasks:
+     - Transfer
+     - BMS            
+     - Cobol           
+     - Assembler     
+     - PLI           
+  
+### 
+# System Lib for compiler, linkedit ... 
+### 
+variables:
+  ############################################################
+  # System Dataset on Build Host (poc-waas -njl) 
+  ############################################################
+  
+  # Cobol Compiler Data Sets. Example: COBOL.V6R1M0.SIGYCOMP
+  # New ODE Stock includes new IGY lib 
+  - name: SIGYCOMP
+    #  value: IGY.V6R4M0.SIGYCOMP
+    value: IGY.V6R5M0.SIGYCOMP
+
+  # Simulate Cobol Compiler v4 for demo using v6 PDS  (njl)
+  # - name: SIGYCOMP-V4
+  #  value: IGY.V6R4M0.SIGYCOMP
+
+
+
+
+  # z/OS macro library. Example: SYS1.MACLIB
+  - name: MACLIB
+    value: SYS1.MACLIB 
+    
+  # LE (Language Environment) load library. Example: CEE.SCEELKED
+  - name: SCEELKED
+    value: CEE.SCEELKED
+
+  # High Level Assembler (HLASM) load library. Example: ASM.SASMMOD1
+  - name: SASMMOD1
+    value: ASM.SASMMOD1
+
+
+  # CPP libs 
+  - name: SCEERUN2
+    value: CEE.SCEERUN2 
+  - name: SCCNCMP
+    value: CBC.SCCNCMP 
+  - name: SCEERUN
+    value: CEE.SCEERUN 
+  
+  - name: SCEELIB
+    value: CEE.SCEELIB
+  - name: SCEEBND2
+    value: CEE.SCEEBND2
+  
+  - name: SCLBH
+    value: CBC.SCLBH.H    
+  - name: SCEEH
+    value: CEE.SCEEH.H
+  
+
+  # CICS Macro Library. Example: CICSTS.V4R1M0.CICS.SDFHMAC
+  - name: SDFHMAC
+    value: CICSTS63.CICS.SDFHMAC
+
+  # CICS COBOL Library. Example: CICSTS.V4R1M0.CICS.SDFHCOB
+  - name: SDFHCOB
+    value: CICSTS63.CICS.SDFHCOB
+  
+  # CICS Load Library. Example: CICSTS.V4R1M0.CICS.SDFHLOAD
+  - name: SDFHLOAD
+    value: CICSTS63.CICS.SDFHLOAD
+  
+  # DB2 Load Library. Example: DB2.V11R1M0.SDSNLOAD
+  - name: SDSNLOAD
+    value: DB2V13.SDSNLOAD
+   
+  # Assembler macro library. Example: CEE.SCEEMAC
+  - name: SCEEMAC
+    value: CEE.SCEEMAC
+  
+  # PL/I Compiler Data Sets.  Example: PLI.V5R2M0.SIBMZCMP
+  - name: IBMZPLI
+    value: PLI.V6R2M0.AIBMZMOD
+  
+  # CICS PLI Library. Example: CICSTS.V3R2M0.CICS.SDFHPL1
+  #- name: SDFHPL1
+  #  value: 
+
+  # MQ COBOL Library. Example: CSQ.V9R1M0.SCSQCOBC
+  - name: SCSQCOBC
+    value: SYS1.MACLIB
+
+  # MQ PLI Library. Example: CSQ.V9R1M0.SCSQPLIC
+  #- name: SCSQPLIC
+  #  value: 
+
+  # MQ Assembler Library. Example: CSQ.V9R1M0.SCSQMACS
+  #- name: SCSQMACS
+  #  value:
+
+  # MQ Load Library. Example: CSQ.V9R1M0.SCSQLOAD
+  - name: SCSQLOAD
+    value: SYS1.LINKLIB
+
+  # DB2 Exit Library. Example: DBC0CFG.SDSNEXIT
+  #- name: SDSNEXIT
+  #  value:
+
+  # IMS Macro Library. Example: DFS.V11R1M0.SDFSMAC
+  #- name: SDFSMAC
+  #  value:
+
+  # IMS RESLIB. Example: DFS.V11R1M0.SDFSRESL
+  #- name: SDFSRESL
+  #  value: 
+
+  # User generated library for DB/DC and DC installations. Example: DFS.V11R1M0.REFERAL
+  #- name: REFERAL
+  #  value: 
+
+  # IBM Debug Library containing Exits
+  #- name: SEQAMOD
+  #  value:
+
+  # Optional IDz Load Library. Example: FEL.V14R0M0.SFELLOAD
+  #- name: SFELLOAD
+  #  value: 
+
+  # Optional IDZ zUnit / WAZI VTP library containing necessary copybooks. Example : FEL.V14R2.SBZUSAMP
+  #- name: SBZUSAMP
+  #  value:
+
+  # REXX Compiler Data Sets. Example: REXX.V1R4.SFANLMD
+  #- name: SFANLMD
+  #  value:
+
+  # PD Tools Common Component load library. Example : PDTCC.V1R8.SIPVMODA  (TAZ220)
+  - name: SIPVMODA
+    value: IDZ.V17R0M0.SIPVMODA 

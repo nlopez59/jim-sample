@@ -1,0 +1,7 @@
+//* Sample proc to sort a file see sort.jcl
+//SORTPROC PROC  
+//STEP1    EXEC PGM=SORT
+//SYSOUT   DD SYSOUT=*
+//SORTOUT  DD SYSOUT=*
+//SYSIN    DD DSN=IBMUSER.ZBUILDER.CNTL(&CNTL),DISP=SHR       
+// PEND

@@ -1,0 +1,3 @@
+# Items not to push to Git Server. Anything in the logs folder  
+logs/*
+conf/DB2z/*

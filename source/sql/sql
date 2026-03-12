@@ -1,0 +1,5 @@
+-- select dbb tables
+--select * from sysibm.systables where creator = 'DBBZ'
+select * from sysibm.systables where name like 'SYSA%'
+-- dbb sample quiries
+--select * from dbbz.logical_FILE 

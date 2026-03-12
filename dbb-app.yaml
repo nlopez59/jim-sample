@@ -1,0 +1,63 @@
+---
+###
+# NJL - v3
+# Notes: This file defines the 2 basic steps to compile and link a cobol program
+# Dependency path and compile/linked options globally define in central zdevops/conf/build/Cobol.yaml
+# On first vsCode Build, run the full upload option to copy this file to USS.  Then use User build only
+# REF: https://www.ibm.com/docs/en/dbb/3.0?topic=concepts-application-configuration
+# ...
+version: 1.0.0
+# njl-mod: userParms is a way to pass your application specific compiler options to append to the defaults in Cobol.yaml
+        #          The only restriction is that defaultParms cant be null.  
+        #          "note: The normal behavior is the dbb-app.yaml overrides 'all' default compiler options in Cobol.yaml like "IS_CICS"       
+
+application:
+  name: source     # sets the $APPLICATION system var used in dependency path and collection name. Its also the top folder of all source code
+  tasks:
+    - task: Cobol
+      variables:     
+
+        # DBB 3.0.3 supports assigning a common build override by pgm names/patters as show 
+        # for specific pgm-level override see the asample.cbl.yaml in /source/.dbb_processor 
+        # Ref: https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=index-task-language#languageconfigurationsource
+        - name: languageConfigurationSource
+          value: ${APP_DIR}/${APPLICATION}/.dbb_processor/PG_CBL24.yaml
+          forFiles:
+            - "**/cobol/cob24/asamp2.cbl"            
+        
+        # An example on how a developer change override the default DB2 Bind process from Package to Plan 
+        # By adding hte pgm names or patterns, you can override the DB2 DeployType 
+        - name: isBindPlan 
+          value: true 
+          forFiles:            
+            - "**/cobol/batch/db2pgmp.cbl"
+            
+
+        # Demo - override default compiler parms for files in a certain folder  or pgm name pattern
+        - name: userParms 
+          value: XREF,APOST,DATA(24)
+          forFiles: 
+          - "**/dat*.cbl"
+          - "**/cob24/asample.cbl"
+
+
+        # Append  Compiler options 
+        # When this var is defined, it enables the compiler 'test' in Cobol.yaml. This is needed for the IBM Debugger. 
+        - name: debug      
+          value: true 
+
+
+
+
+    - task: ImpactAnalysis
+      variables:
+        - name: impactQueryPatterns
+          value:
+            - languageExt: cbl      
+              dependencyPatterns: 
+                - "**.cpy"
+                - "**.bms"
+                - "**.cbl"
+            - languageExt: lnk                    
+              dependencyPatterns: 
+                - "**.cbl"      

@@ -1,0 +1,65 @@
+name: zOS_Release   
+  # This workflow demostrates a generic Wazi-Deploy release of an artifactory package to a target zOS env like QA, UAT or PROD.
+  # Enterprise GitHub users should use the "Environment" variable to protect deployment flows to protected envs.
+  # A user provided target zOS env and package ver# drive the deployment process.  
+   
+
+# Global vars   
+env:      
+  # Tip: Add the ssh/scp user to a Host entry in the Runner's .ssh/config file to avoid adding it here.
+  zOS_Host:     'ssh ibmuser@taz-zos  '                           # < chg: zOS user and sandbox DNS 
+  zOS_Env:      '. /etc/profile; '                                # < chg: Remove the ghav* arg 
+      
+  # The Wazi Deploy target zOS env
+  target_zOS: '$ZDEVOPS_HOME/conf/target-zOS-Host.env'         
+
+  
+
+# Sample PACKAGE INPUT FILE
+#  Default: https://eu.artifactory.swg-devops.com:443/artifactory/sys-dat-team-generic-local/poc-app_Repo/poc-app/1073/ManiName.1.0.0.tar
+  
+
+# this 'on' trigger enables a manual start 
+on: 
+  workflow_dispatch:
+    inputs:
+      PIF_Ver:
+        description: Enter Last BuildID
+        default:  
+        required: true
+
+      TargetEnv:
+          description: Target zOS env 
+          default: qa-target-zOS-Host.env
+          type: choice
+          options:
+              - Dev-zOS.env 
+              - QA-zOS.env
+              - UAT(TBD)
+              - PROD(TBD)
+          required: true
+
+
+jobs:
+  Release_Job:  
+    runs-on: self-hosted   
+    timeout-minutes: 5   
+    
+    env:
+## NEED REWORK FOR V17       
+      PIF:  https://eu.artifactory.swg-devops.com:443/artifactory/sys-dat-team-generic-local/poc-app_Repo/poc-app/${{ inputs.PIF_Ver }}/ManiName.1.0.0.tar
+    
+    
+    steps:
+      - name: Init work dirs  and check disk space utilization                 
+        run: ${{ env.zOS_Host }} 'mkdir -p  ${{ env.WorkDir }};  df -P /tmp '          
+      
+      - name: Download the User provided package and generate a deployment plan   
+        run: | 
+          ${{ env.zOS_Host }} '${{ env.zOS_Env }} echo Downloading  ${{ env.PIF }}; . /global/opt/pyenv/gdp/bin/activate; wazideploy-generate  --configFile  /u/ibmuser/zdevops/conf/deploy/artifactory.yml --deploymentMethod /u/ibmuser/zdevops/conf/deploy/deploy-method.yml --deploymentPlan /tmp/wazi-AppPlan --deploymentPlanReport  /tmp/wazi-deploymentPlanReport --packageInputFile ${{ env.PIF }} --packageOutputFile /tmp/package.tar --workingFolder /tmp' 
+      
+      
+      - name: Deploy the package on a GitHub protected Environment
+        run: | 
+          ${{ env.zOS_Host }} '${{ env.zOS_Env }} echo deploying to ${{ env.PIF }}; . /global/opt/pyenv/gdp/bin/activate; wazideploy-deploy --deploymentPlan  /tmp/wazi-AppPlan --packageInputFile  /tmp/package.tar   --envFile /u/ibmuser/zdevops/conf/deploy/${{inputs.TargetEnv}}  --evidencesFileName /tmp/evidence.yaml --workingFolder  /tmp'
+       

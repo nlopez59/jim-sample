@@ -1,0 +1,7 @@
+         MACRO
+&LBL     MYMAC  &REG,&VAL 
+* Macros are normally code snippets shared across ASM pgms v3.2
+*
+         LA    &REG,&VAL       Load value into register
+         ST    &REG,WORKAREA   Store it in a work area
+         MEND

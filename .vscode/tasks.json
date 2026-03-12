@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        // WIP this sample vscode task passes the currently opened file name to a uss shell script
+        // Start a task with cntl+shift+b or from the Command Palette's "Run Task" 
+        // RunAs: cntl+shft+b
+
+        "label": "Build Custom task: List dbb file dependencies",    
+        "type": "shell",
+        "command": "ssh",
+        "args": [
+            // Note: passing a full path is difficult because of the way the shell interprets the /             
+            // Defer: to compex to move a fiel to MVS and exec. close but not needed now 
+
+            "poc-waas",
+            ". ./.profile;",
+            "/u/ibmuser/zdevops/scripts/dbbQuery.sh  ${fileBasenameNoExtension}"         
+
+        ],        
+        "group": {
+            "kind": "build",
+            "isDefault": false
+        }
+      },      
+      {
+        "label": "Run USS/REXX exec via SSH (CMD)",
+        "type": "shell",
+        "command": "cmd.exe",
+        "args": [
+          "/d", "/c",
+          "scp ${file} taz-zos: && ssh taz-zos . /etc/profile;  chtag -tc iso8859-1 ${fileBasename}; iconv -f iso8859-1 -t ibm1047 ${fileBasename} > ${fileBasenameNoExtension}; cp ${fileBasenameNoExtension} ""//myrexx""; tsocmd delete myrexx; tsocmd exec "'$USER.MYREXX'""
+        ],
+        "group": {
+            "kind": "build",
+            "isDefault": false
+        }
+      }
+    ]
+  }
+  

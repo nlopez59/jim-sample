@@ -1,0 +1,131 @@
+---
+apiVersion: deploy.ibm.com/v1
+kind: DeploymentMethod
+metadata:
+  name: "CICS-DB2-BATCH-v17-NJL"
+  version: "1.0.0"
+  description: |    
+    A Deployment Method is a template-style YAML file used as input to the Wazi Deploy generate command. The command uses this file to create a deployment plan.
+    This example shows how artifacts are copied to PDS datasets and how post-deployment processes such as DB2 BIND and CICS NEWCOPY can be defined.
+
+    Deployment Method File Structure:
+      The main section of this file is called 'activities' - see below. 
+      It group the following generic actions used in the deployment process: 
+      - Package: 
+        The first activity, expands a package.tar file of DBB artifacts into a USS working directory.
+        
+
+      - Deploy_Modules
+        This activity searches for artifacts of specific 'types' (for example `LOAD` or `DBRM`).  
+        All matching artifacts are assigned the 'MEMBER_COPY' action.  
+
+        Actions are low-level 'building block' processes implemented in Python and using tools such as ZOAU.  
+        In this case, the action copies artifacts as members into a PDS defined in the environment file 
+        (for example `Dev-zOS.env`) during the deployment phase.
+
+        An artifacts type originates from the DBB zBuilder dataset allocation process.
+        For example, when DBB compiles a Db2 batch program, it typically produces two outputs:
+        - A load module with a `deployType` of `LOAD`
+        - A DBRM with a `deployType` of `DBRM`
+
+        Types are used as filters to assign one or more action(s) to an artifact like 'MEMBER-COPY', DB2 or CICS. 
+        Custom actions are supported. 
+
+
+      - DB2, DB2PLAN, and CICS
+        Additional activities such as DB2, DB2PLAN, and CICS use their own type filters to trigger specific building blocks.
+        
+
+      Additional information: 
+          General topics:
+          https://www.ibm.com/docs/en/developer-for-zos/17.0?topic=files-deployment-method
+          https://www.ibm.com/docs/en/developer-for-zos/17.0?topic=translators-building-blocks-ansible-python
+          https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=mvs-dds#deploytype
+
+          Building blocks used in this example:
+            PACKAGE:        https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=blocks-package
+            DEPLOY_MODULES: https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=blocks-member-copy
+            DB2:            https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=blocks-db2-bind-package
+            DB2PLAN:        https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=blocks-db2-bind-plan
+            CICS:           https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=blocks-cics-cmci-prog-update
+
+            The DB2PLAN type requires additional configuration (documentation is pending).
+
+
+  annotations:
+    deployVersion: "1.0.0"
+
+activities:
+  - name: PACKAGE
+    description: This activity expands a package tar file in USS 
+    actions:
+        - name: PACKAGE
+          steps:
+          - name: PACKAGE
+    tags:
+    - always
+
+  - name: DEPLOY_MODULES
+    description: This activity copies artifacts as members into a PDS based on a matching TYPE.
+    actions:
+        - name: UPDATE          
+          states:
+             - UNDEFINED
+          steps:
+          - name: MEMBER_COPY            
+    types:
+      - name: 'DBRM'
+      - name: 'DBRMP'
+      - name: 'LOAD'
+      - name: 'CICSLOAD'
+      - name: 'MAPLOAD'
+      - name: 'JCL'
+    is_artifact: True
+
+  - name: DB2
+    description: Bind package for DBRM file types 
+    actions:
+        - name: UPDATE
+          states:
+             - UNDEFINED
+          steps:
+          - name: DB2_BIND_PACKAGE          
+            properties:
+            - key: template
+              value: db2_bind_package            
+    types:
+      - name: 'DBRM'
+    is_artifact: True
+
+  - name: DB2PLAN
+    description: Bind a plan for DBRMP file types.  This type is assigned by DBB using the languageConfigurationSource feature.
+
+    actions:
+        - name: UPDATE          
+          states:
+             - UNDEFINED          
+          steps:          
+          - name: DB2_BIND_PLAN
+            properties:
+            - key: template
+              value: db2_bind_plan 
+    types:
+      - name: 'DBRMP'
+
+    is_artifact: True
+
+  - name: CICS
+    description: NewCopy a CICS module using the CICS regions CMCI rest interface 
+    actions:
+        - name: UPDATE
+          states:
+             - UNDEFINED
+          steps:
+          - name: PROG_UPDATE
+            properties:
+            - key: "template"
+              value: "cics_cmci_prog_update"
+    types:
+      - name: 'CICSLOAD'
+      - name: 'MAPLOAD'
+    is_artifact: True

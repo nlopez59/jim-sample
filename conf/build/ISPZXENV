@@ -1,0 +1,35 @@
+/* REXX */                       
+
+/* Mods by Nelson -- added the db2 sdsnload lib and packed it 
+under test ...
+origin lpp/IBM/dbb/bin
+
+*/
+say '[ISPZXENV] NJL MOD for DB2 support  Active' 
+STEPLIB = 'DB2V13.SDSNLOAD'
+                                            
+CGI_CEATSO = 'FALSE'                                      /*@02A*/              
+CGI_PING = 'FALSE'                                        /*@08A*/              
+CGI_ISPCONF = '/etc/ispf'                                                       
+CGI_ISPWORK = '/var/ispf'                                                       
+CGI_ISPPREF = '&SYSPREF..ISPF.VCMISPF'                         /*@01A*/         
+CGI_ISPLOGLEVEL = '2'                                          /*@06A*/         
+CGI_ISPDEBUG = 'FALSE'                                         /*@06A*/         
+CGI_ISPDEBUG_MIN = 'FALSE'                                     /*@04A*/         
+
+CALL ENVIRONMENT 'CGI_TRACE','NELSON_TRACE'
+CALL ENVIRONMENT 'CGI_CEATSO',CGI_CEATSO                       /*@02A*/         
+CALL ENVIRONMENT 'STEPLIB',STEPLIB                                              
+CALL ENVIRONMENT 'CGI_ISPCONF',CGI_ISPCONF                                      
+CALL ENVIRONMENT 'CGI_ISPWORK',CGI_ISPWORK                                      
+CALL ENVIRONMENT 'CGI_ISPPREF',CGI_ISPPREF                     /*@01A*/         
+CALL ENVIRONMENT 'CGI_ISPLOGLEVEL',CGI_ISPLOGLEVEL             /*@06A*/         
+CALL ENVIRONMENT 'CGI_ISPDEBUG',CGI_ISPDEBUG                   /*@06A*/         
+CALL ENVIRONMENT 'CGI_ISPDEBUG_MIN',CGI_ISPDEBUG_MIN           /*@04A*/         
+CALL ENVIRONMENT 'CGI_PING',CGI_PING                           /*@08A*/         
+                                                                                
+/* Invoke sticky module ISPZINT */                                                     
+'ISPZINT'                                                                       
+                                                                                
+EXIT                                                                            
+

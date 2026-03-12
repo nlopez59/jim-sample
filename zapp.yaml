@@ -1,0 +1,93 @@
+name: "zapp-sample"
+version: "3.0.0"
+author:
+  name: "NelsonLopez"
+
+
+
+propertyGroups:
+  - name: cobol-copybooks
+    language: cobol
+    libraries:
+      - name: syslib
+        type: local
+        locations:
+          - "**/copybook"
+          - "**/bms"
+
+      - name: syslib
+        type: mvs
+        locations:
+          - "IBMUSER.VSCODE.COPY"          
+          - "IBMUSER.VSCODE.BMS.COPY"
+          - "CICSTS62.CICS.SDFHCOB"
+          - "IDZ.V17R0M0.SEQASAMP"
+
+  - name: hlasm-maclibs
+    language: hlasm
+    libraries:
+      - name: syslib
+        type: local
+        locations:
+          - "**/copyasm"
+      - name: maclib
+        type: local
+        locations:
+          - "**/maclib"
+
+      - name: maclib
+        type: mvs
+        locations:
+          - "IBMUSER.VSCODE.MACLIB"
+profiles:
+  
+  - name: "dbb-userbuild"
+    type: "dbb"
+    settings:
+      command: "cp -r conf/build/* $ZDEVOPS_HOME/conf/build;  dbb  -DBB_DAEMON_PORT 8180 --verbose  build "
+      
+      lifecycle: user
+      
+      lifecycleArgs:
+        - "--hlq ${zopeneditor.userbuild.userSettings.dbbHlq}"
+      
+      additionalDependencies:
+        - "dbb-app.yaml"
+        - "source/.dbb_processor/*"
+
+        # Admin yaml files for testing purpose 
+        - "conf/build/*"
+
+      logFilePatterns:
+        - "**/logs/*.log"
+
+        
+  - name: UnitTest
+    type: test
+    settings:
+      unitTest:
+        procLib:
+          - SYS1.PROCLIB
+        userLibraries:
+          - IBMUSER.VSCODE.LOAD
+
+  # Custom ZCodeScan rules example
+  # ref: https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=overview-linting-zcodescan
+  # This workspace includes custom zCodeScan rules for demo purposes
+  ##
+  ##  ZCS PROFILE INCOMPA WITH TEST PROF ??? DISABLE FOR NOW
+ # - name: myZcodeScan
+ #   type: zcodescan
+ #   settings:
+ #     rules:
+ #       - type: local
+ #         locations:
+ #           # Example of defining custom rules for a application (the ibm SAM app)
+ #           - "conf/openEditor/zcodescan-custom-rules/cobol-sample.yaml"
+ #           # PLI rules
+ #           - "conf/openEditor/zcodescan-custom-rules/pli-sample.yaml"
+ #     customRuleModels:
+ #       - type: local
+ #         locations:
+ #           # TBD
+ #           - "conf/openEditor/zcodescan-custom-rules/rules-domains.yaml"

@@ -1,0 +1,4 @@
+/u/ibmuser/tmp/wd-test-full/zdevops/source/bms/epsmlis.bms
+/u/ibmuser/tmp/wd-test-full/zdevops/source/cobol/batch/db2pgm.cbl
+/u/ibmuser/tmp/wd-test-full/zdevops/source/cobol/batch/db2pgmp.cbl
+/u/ibmuser/tmp/wd-test-full/zdevops/source/cobol/batch/asample.cbl

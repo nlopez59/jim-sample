@@ -1,0 +1,324 @@
+name: zOS_DevSecOps 
+  # IBM provided MVP GitHub Actions workflow for zOS DevSecOps using (v7b/taz230 Jan 2026)
+  # SEE DOC at end of this file for more details  
+
+  #_As of TAZ 203 stock:
+  # first clone must be donr by hand to update mitm auth host or suppress it on the clone at some point 
+  # - git is at 2.50, dbb is 3.0.3, WD3.0.6? PY3.13 ZOAU? 
+  # - There may be some issue with auto_CVT and git cli. In review (ie. it added NL in this script. Had to reconf this yaml as long one liners for now?)
+  # - WD issue forces zDT to shutdown!!!  Skip WD from Demo for now 
+
+    
+
+
+# Global vars
+env:    
+  zOS_Host:  'ibmuser@zos'                                        # < chg: zOS user and sandbox  
+  zOS_Env:   '. /etc/profile '                                    # has IBM product setting (dbb, git, zoau ...) 
+  buildID:   ${{github.run_number}}                               # Used for versioning artifacts 
+
+  # Generic reference to this project;s source repo and branch at time of build
+  myRepo:       git@github.com:${{github.repository}}.git         # Source - this repo
+  myBranch:     ${{ github.ref_name }}                            # Branch
+
+  # CLI settings for runner using Sonar's free cloud end point  
+  SONAR_HOST_URL: 'https://sonarcloud.io/'
+  SECRET_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}                  # < chg: Sonar Cloud token stored in GitHub Secrets 
+
+  # **Working folders**
+  jobLogs:      'jobLogs_${{github.run_number}}'                  # Agent folder to collect all job logs and reports
+  ciWorkDir:    '/tmp/zdevops/${{github.run_number}}_Build'       # < chg: USS Build working dir for mySource
+  cdWorkDir:    '/tmp/zdevops/${{github.run_number}}_Release'     # < chg: USS Release working dir for mySource
+  
+    # When IBM Headless (RDS) Code Coverage (CC) is enabled, you can run a test with a batch job to generate a CC PDR report.
+    # The PDF is placed in a USS folder names after the parms passed to CC in the CEEOPTS DD.  BElow is an example JCL 
+    #  //CEEOPTS DD *
+    #  TEST(,,,RDS:*)
+    #  ENVAR("EQA_STARTUP_KEY=CC,,e=PDF,o=zdevops")
+    #
+    # The above places the PDF in /u/stcdbg/CC/IBMUSER/*.pdf
+    # Where stcdbg is the debug engine's job name, CC is the ENVAR KEY, IBMUSER is test batch job USER ID. 
+    # The * will be the name of the pgm analyzed by CC with a timestamp 
+
+  ccWorkDir:    '/u/stcdbg/CC/IBMUSER'                             # < chg: USS Code Coverage workDir
+
+
+  # ** Application specific vars. The dev team needs to update this section **    
+  myApp:        'zdevops'                                          # < chg: App Repo name     (DBB arg -workspace)
+  mySource:     'source'                                           # < chg: App Source folder (DBB arg -application)
+  myArtRepo:    'source'                                           # < chg: App Artifactory Repo subDir
+
+    #   An example common repo of share source code used this sample project 
+  myCommonRepo:     git@github.com:nlopez59/Common.git             # < chg: Optional: Common source code repo
+  myCommonBranch:   main                                           #        and it's branch
+
+
+    # Example code to overrides dbb build options by Branch name. For example enable DEBUG for features or develop branch builds
+  DBB_DEBUG: ${{ github.ref_name == 'develop' || startsWith(github.ref_name, 'feature') && '--debug' || '' }}
+# -------------------------------------------------------------------------------------------------------------------------------
+
+
+  
+on: [workflow_dispatch,push]
+# the 'on' workflow_dispatch is used to manually start this workflow. The push is for autostart from VS Code.
+# ref: https://docs.github.com/en/actions/learn-github-actions/contexts
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  # zOS/USS Init + Clone + Build
+  # https://www.ibm.com/docs/en/adffz/dbb/3.0.x?topic=dependency-based-build-overview 
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  Build_Job:        
+    # Dont run when commit msg starts with doc. Used when updating Docs only.  v1
+    if: github.event.head_commit.message && startsWith(github.event.head_commit.message, 'doc') == false
+
+    # Note: Fyre VM has a runner but is currently missing zcs and cc.  Use my local runner for now.   
+    runs-on: 
+      - self-hosted   
+      - Windows
+      
+    timeout-minutes: 5
+
+    steps:
+      - name: Init Runner - remove old logs and make work dir
+        shell: cmd        
+        run: (for /d %%D in (jobLogs_*) do rmdir /s /q "%%D") & mkdir "${{env.jobLogs}}" & dir
+
+      - name: Init z/OS - Keep last 3 logs, make work dirs, and show  disk space utilization
+        run: ssh ${{ env.zOS_Host }} 'ls -t /tmp/zdevops | tail -n +3 | xargs -I{} rm -fr "/tmp/zdevops/{}"; mkdir -p ${{ env.ciWorkDir }}; df -P tmp'
+
+      - name: Git Clone - zOS/USS Side         
+        # clone the app repo with depth 1 for demo only - adjust as needed
+        run: ssh ${{env.zOS_Host}} '${{env.zOS_Env}};  git clone --depth 1  -b ${{env.myBranch}}     ${{env.myRepo}}   ${{env.ciWorkDir}}/${{env.myApp}}'
+        
+        
+      #      cd ${{env.ciWorkDir}}/${{env.myApp}};
+      #      echo SKIPPING the clone of a shared repo ....     git clone -b        ${{env.myCommonBranch}}  ${{env.myCommonRepo}};
+        
+        
+      - name: Refresh DBB and other Configs (zDevOps folder on USS)
+        # Note- strange eol char forces me to place cli in one long line - for now 
+        # Copy clone zdevops files to home dir 
+        run: ssh ${{env.zOS_Host}} '${{env.zOS_Env}}; [ -n "$ZDEVOPS_HOME" ] && [ "$ZDEVOPS_HOME" != "/" ] || { echo "!!! ZDEVOPS_HOME etc/profile Env Var is not set or invalid — aborting."; exit 1; }; rm -rf $ZDEVOPS_HOME/conf; rm -rf $ZDEVOPS_HOME/scripts; mkdir -p $ZDEVOPS_HOME/conf;  mkdir -p $ZDEVOPS_HOME/scripts; cp -r ${{env.ciWorkDir}}/${{env.myApp}}/conf/ /u/ibmuser/zdevops/conf/; cp -r ${{env.ciWorkDir}}/${{env.myApp}}/scripts/ /u/ibmuser/zdevops/scripts/;chmod -R +x $ZDEVOPS_HOME/scripts/;ls -lasT'
+            
+      - name: Build         
+        # Run DBB zBuilder with one pgm (non-impact mode) for demo purposes 
+        # On Virt zOS (TAZ/ODE) its best to use the DBBS STC for performance 
+        #    dbb -DBB_DAEMON_PORT 8180 build file --hlq ibmuser.zbuilder  source/cobol/batch/datbatch.cbl;          
+        # Note: 
+        #   - sysprint file encode is set in cobol.yaml dd
+        #   - DBB buildList must be converted to UTF8 for the IBM Code Coverage step
+        #   - See Env section above for use of the DB_DEBUG option
+    
+        run: >      
+         ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; cd  ${{env.ciWorkDir}}/${{env.myApp}}; dbb  -DBB_DAEMON_PORT 8180   build file ${{ DBB_DEBUG: }} --hlq ibmuser.zbuilder  source/cobol/batch/datbatch.cbl; iconv -f IBM-1047 -t UTF-8 ${{env.ciWorkDir}}/${{env.myApp}}/logs/buildList.txt >  ${{env.ciWorkDir}}/${{env.myApp}}/logs/buildList_utf8.txt'
+            
+      - name: Save DBB build logs         
+        if: always()
+        run: 'scp ${{env.zOS_Host}}:${{env.ciWorkDir}}/${{env.myApp}}/logs/*.log  ${{env.jobLogs}} '
+        
+      - name: Save DBB build html rpt
+        run: 'scp ${{env.zOS_Host}}:${{env.ciWorkDir}}/${{env.myApp}}/logs/*.html ${{env.jobLogs}}'              
+                
+      - name: Save the DBB UTF8 version of the BuilList for the Code Scanner job  
+        run: 'scp ${{env.zOS_Host}}:${{env.ciWorkDir}}/${{env.myApp}}/logs/buildList_utf8.txt ${{env.jobLogs}}'              
+        
+      
+  # ───────────────────────────────
+  # IBM CODE SCAN + SONAR  
+  # https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=static-scan-zcodescan  
+  #
+  # TODO: fix RC check to halt run if scan exceed acceptable rank 
+  # This job should run after a build to avoid scanning non-buildable code
+  # ───────────────────────────────
+  Code_Scan_Job:
+     needs: Build_Job
+     runs-on: 
+      - self-hosted       
+      - Windows 
+     
+     steps:
+      - name: Git Clone - Runner Side
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+          clean: false
+
+      - name: zCodeScan (IBM Static Source Code Scanner ver 1.0.1.1 alpha Edition Windows CLI)        
+        # Scan what was built from Runner Agent VM (My PC)
+        # Scan return codes: # 0=no issues, 1=INFO, 2=LOW, 3=MEDIUM, 4=HIGH, 5=BLOCKER, -1=internal error
+        # CD up one level to match the path used in DBB's buildList 
+        shell: cmd
+        run: |
+          echo Running zCodeScan(ZCS) on GitHub Runner _work Dir %CD% 
+
+            cd ..
+            setlocal enabledelayedexpansion
+
+            python -m venv C:\opt\pyenv\zcodescan
+            call C:\opt\pyenv\zcodescan\Scripts\activate          
+         
+            echo trace zcs pwd
+            dir 
+
+            
+            zcodescan -sfl zdevops\${{env.jobLogs}}/buildList_utf8.txt -cf zdevops\conf\zcodescan\config.yml -of output.yml -e utf-8 -et sonarqube -ef IBM_CodeScan.json           
+           
+            set ZCS_RC=%ERRORLEVEL%
+            deactivate
+
+            echo zCodeScan returned %ZCS_RC%
+            
+        # REM Fail workflow if return code >= 3
+            # if !ZCS_RC! GEQ 2 (
+            #   echo zCodeScan found MEDIUM or higher severity issues. Failing workflow.
+            #   exit /b !ZCS_RC!
+            # ) else (
+            #   echo zCodeScan completed with no High or BLocker severity issues.
+            # )
+
+      - name: zCodeScan to Sonar Cloud
+        shell: cmd
+        # See sonar-project.properties file
+        # disable sonar for now 
+        run:   Sonar-scanner 
+      
+          
+        # echo Removing old ZCS results in Sonar Cloud  
+        # curl  -u "e52815a564479cf307f3b9a3039220a61968e6da:" -X POST https://sonarcloud.io/api/projects/delete?project=”zdevopsV1”
+    
+       
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  # WAZI DEPLOY - MVP tested with V16
+  # https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=deploying-zos-wazi-deploy
+  # TODO:
+  #    Get WD logs 
+  #    refactor package.sh to use generic folder names. They are currently hardcoded for demos.
+  #
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  Package_Publish_and_Deploy_to_Dev_Job:
+    needs: Code_Scan_Job
+    runs-on: 
+      - self-hosted   
+      - Windows
+
+    env:
+      PIF:        local_package.tar
+      TargetEnv:  Dev-zOS.env  
+    
+    # TECH NOTE: Nov 2025 Stock WD/Py is unstable in x856 env. May need to skip this step "if: false" 
+
+    if: true
+
+
+    steps:
+      - name: Prepare, package and publish to Artifactory. Also prepare a local package ($PIF) for faster Dev Deployments 
+        run:  ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; $ZDEVOPS_HOME/scripts/package.sh ${{ env.ciWorkDir}}/${{env.myApp}}  ${{ env.myArtRepo }} ${{ env.mySource }} ${{ env.buildID }}; cd ${{ env.ciWorkDir}}/${{env.myApp}}; tar cUXf ${{env.PIF}} IBMUSER.ZBUILDER.LOAD; ls -lasT .'
+
+      - name: Generate Deployment Plan 
+        run:  ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; cd ${{ env.ciWorkDir}}/${{env.myApp}}; . /global/opt/pyenv/gdp/bin/activate; wazideploy-generate --deploymentMethod /u/ibmuser/zdevops/conf/deploy/deploy-method.yml  --deploymentPlan  /tmp/wazi-AppPlan --packageInputFile ${{env.PIF}} --packageOutputFile /tmp/package.tar --deploymentPlanReport /tmp/wazi-deploymentPlanReport --workingFolder /tmp; deactivate;sleep 15 ' 
+        
+        # my test cli 
+        ## run:  ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; cd ${{ env.ciWorkDir}}/${{env.myApp}}; . /u/ibmuser/pyenv/gdp_v2/bin/activate; wazideploy-generate --deploymentMethod /u/ibmuser/zdevops/conf/deploy/deploy-method.yml  --deploymentPlan  /tmp/wazi-AppPlan --packageInputFile ${{env.PIF}} --packageOutputFile /tmp/package.tar --deploymentPlanReport /tmp/wazi-deploymentPlanReport --workingFolder /tmp; deactivate ' 
+      
+      - name: Auto-deploy to Dev (Wazi Deploy in Python Mode) using local $PIF.  
+        run:  ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; cd ${{ env.ciWorkDir}}/${{env.myApp}}; . /global/opt/pyenv/gdp/bin/activate; wazideploy-deploy --deploymentPlan /tmp/wazi-AppPlan --packageInputFile /tmp/package.tar --envFile/u/ibmuser/zdevops/conf/deploy/${{env.TargetEnv}} --evidencesFileName /tmp/evidence.yaml --workingFolder /tmp; deactivate;sleep 15' 
+        
+        ## run:  ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; cd ${{ env.ciWorkDir}}/${{env.myApp}}; . /u/ibmuser/pyenv/gdp_v2/bin/activate; wazideploy-deploy --deploymentPlan /tmp/wazi-AppPlan --packageInputFile /tmp/package.tar --envFile/u/ibmuser/zdevops/conf/deploy/${{env.TargetEnv}} --evidencesFileName /tmp/evidence.yaml --workingFolder /tmp; deactivate' 
+             
+      - name: Save the WD logs 
+        run: 'scp ${{env.zOS_Host}}:${{env.ciWorkDir}}/${{env.myApp}}/logs/buildList_utf8.txt ${{env.jobLogs}}'                      
+            
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  # Simulate automated Test jobs for show IBM Code Coverage reporting (Limited testing)
+  # https://www.ibm.com/docs/en/debug-for-zos/17.0.x?topic=coverage-generating-code-zos-applications 
+  # https://www.ibm.com/docs/en/debug-for-zos/17.0.x?topic=applications-specifying-code-coverage-options-in-startup-key
+  #  
+  # Waiting for access to IBM Internal sonarServer for import of CC report (View PDF from GH actions page)
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  Run_Test_and_Code_Coverage_Job:
+    needs:   Build_Job
+    runs-on: 
+      - self-hosted     
+      - Windows
+
+    env:
+        # JCL uses above DBB HLQ for demo 
+        testJob: "source/jcl/batch-jobs/test/manual-test.jcl"
+
+    steps:      
+      - name: Init - IBM Code Coverage Working Dir            
+        run: ssh ${{env.zOS_Host}} "if [ -d ${{env.ccWorkDir}} ]  && [ ${{env.ccWorkDir}} != / ] ; then rm -fr ${{env.ccWorkDir}}; fi"
+ 
+      - name: Run a sample Batch Test Job to generate Code Coverage PDFs.  Wait 30 secs for 15 intervals - adjust as needed. And sleep 30 sec to allow virt env lag of PDF report crteation  (avoid bad pdf file).'                 
+        run: ssh ${{ env.zOS_Host }} '${{ env.zOS_Env }}; $ZDEVOPS_HOME/scripts/jobMon.sh ${{env.ciWorkDir}}/${{env.myApp}}/${{env.testJob}} 30 15;sleep 30'  
+              
+      - name: Pull Code Coverage PDFs from USS
+        shell: cmd
+        run: 'scp  ${{env.zOS_Host}}:${{env.ccWorkDir}}/* ${{env.jobLogs}} &&
+              echo IBM Code Coverage PDF artifact extracted. See this jobs artifacts for details. '
+
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  # Collect logs Reports 
+  # Publish any available logs for any job even if any prior step fails 
+  # ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  Gather_Logs:    
+    needs: [Build_Job, Code_Scan_Job, Package_Publish_and_Deploy_to_Dev_Job, Run_Test_and_Code_Coverage_Job]
+    runs-on: 
+      - self-hosted            
+      - Windows
+
+    if: always()              
+
+    steps:      
+      - name: Upload logs 
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: ${{env.jobLogs}} 
+          retention-days: 5          
+
+########################################################################################################################
+    # Workflow Description: 
+      # IBM provided GitHub Actions workflow for zOS DevSecOps using (v6/QG_1.0a alpha)
+      #  - GitHub Repo (free acct) 
+      #  - IBM zOS Build (DBB)    
+      #  - IBM Wazi-Deploy
+      #  - IBM Code Scan in Sonar
+      #  - IBM Code Coverage (headless/RDS mode) running automated Batch Test jobs (non-TAZ mode) 
+      #  - IBM Internal zOS Host provisioned using 'IBM's On-Demand Environments' component of IBM® Test Accelerator for Z (TAZ)
+      #  *** IBM DBB, Code Scan and Wazi-Deploy are bundled with IBM IDzEE or ADFz
+      
+      # Non_IBB Services used in this demo:
+      #  - SonarQube Cloud (free acct) 
+      #  - JFROG Artifactory (IBM Internal environment) 
+
+    # Workflow design: 
+      # This sample workflow is intended for DevOps Administrators to prototype and validate process. 
+      # Once the workflow is fully configured and tested, it can be standardized and shared with application 
+      # teams for their own use, ensuring consistency and best practices across projects.
+      # TIP! Add non-application specific settings to a centralized workflow for easy reuse and maintenance.
+      #      See https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows?utm_source=chatgpt.com 
+
+    # Tech Notes: 
+      #  - Review all comments and make the appropriate changes
+      #  - A 'skip AutoRun' condition is added to each job to allow Admins to update/commit/push readme docs while avoiding a build. 
+      #      Simply add the text 'doc' at the start of the commit msg to skip the build.  
+      #  - Windows-based runner may need script execution policy using: 
+      #      Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+      #  - zOS_Env profile defines various secrets for testing and demos. In the real world all 
+      #      secrets should be store in a secured vault.
+      #  - This sample flow packages build artifacts in Jfrog and deploys them to a simulated zOS "Dev" host using Wazi-Deploy.  
+      #  - Use the zOS_Release workflow to deploy a package to an upper environment. 
+      #  - While not part of this sample, deployment to upper envs should be protected using GitHub environment 
+      #    privileges and approval gates. 
+    # Special features:
+      # How to override build options based on developement stage.
+      #  For example, when building a feature or a develop branch add teh debug switch to DBB CLI 
+      #  For all other branches, dont enable debug
+      #  Here isa model to do that in yaml: 
+      #   - name: DBB Build
+      #       run: dbb build file --hlq ibmuser.zbuilder source/cobol/batch/datbatch.cbl ${{ github.ref_name == 'develop' || startsWith(github.ref_name, 'feature') && '--debug' || '' }}  
+    # -------------------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,13 @@
+    HELLO: PROC OPTIONS(MAIN);
+
+    DCL A FIXED DECIMAL(15,2);        /* FixedDecimalPrecisionRule */
+    A = 1;
+
+    GOTO SKIPPRINT;                  /* ERR: GoToRule */
+
+    PUT SKIP LIST('Hello, world from PL/I!');
+
+    SKIPPRINT:
+    PUT SKIP LIST(A);                /* SingleVariableRule */
+
+    END HELLO;

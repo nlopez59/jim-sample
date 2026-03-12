@@ -1,0 +1,52 @@
+# This git configuration file transforms file encoding. Rules follow the order in which they are defined. 
+# Generic rules like "**" are overridden by specific rules like "**.md".
+
+# On USS, encoding information is stored in a file's tag. Use the cmd "ls -lasT" to show the "T" Tag.
+# The env var export _CEE_RUNOPTS="FILETAG(AUTOCVT,AUTOTAG)", is used to auto tag a file. 
+# In VS Code, Open Editor uses this .gitattribute files when upload files to USS.  
+
+# Source code default zos/uss encoding rule 
+# ** This is a default rule for all files to convert the git default ASCII (UTF-8) to (IBM-1047) EBCDIC when cloning on USS.
+#    With the exception of some specific rules below, this rule applies to all files like source code, across all folders (**) 
+**              zos-working-tree-encoding=ibm-1047
+
+# testing vs code tagging 
+**/tag-utf-32.cbl zos-working-tree-encoding=utf-32
+
+
+
+
+
+# DBB v3   Admin files (not for app repos) 
+conf/**/*.yaml  zos-working-tree-encoding=utf-8 
+conf/**/*.conf  zos-working-tree-encoding=utf-8 
+
+# for all types of repos testing with utf-16 (luke)
+dbb-app.yaml  zos-working-tree-encoding=utf-16
+
+# Wazi-Deploy  
+conf/deploy/*.yaml zos-working-tree-encoding=utf-8 
+
+
+# ** Specific rule maintains the required IBM ascii encoding of this git-file. 
+.gitattributes  zos-working-tree-encoding=utf-8 
+
+# any markdown file 
+**.md           zos-working-tree-encoding=utf-8 
+ 
+# ** Other files that must be transferred as binary 
+
+
+**.png binary
+**.pdf binary
+**.jar* binary
+**.docx binary
+**.pptx binary
+
+# Example TAZ EDT files tagging. alll other exts (json, bzucfg, ztest) stay utf8 (for now) 
+**.rec binary
+**.zdata binary
+
+
+# ** Manage the new line conversion for text files
+* text=auto            eol=lf

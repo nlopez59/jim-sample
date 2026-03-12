@@ -1,0 +1,415 @@
+/* Rexx  */                                                                     
+/*                                                                              
+/****************************************************************/              
+/*    Licensed Materials - Property of IBM                      */              
+/*    5650-ZOS                                                  */              
+/*    Copyright IBM Corp. 2008, 2019                            */              
+/*                                                              */              
+/* This REXX routine is an XML API for the "TSO/ISPF Client     */              
+/* Gateway". This routine provides the XML API for both the     */              
+/* Interactive ISPF Gateway and the Legacy ISPF Gateway.        */              
+/*                                                              */              
+/*                                                              */              
+/*  Change activity = As follows                                */              
+/*                                                              */              
+/* $01=OA24881 2008/07/07 PV: - ensure <TSO> tag is generated   */              
+/*                            - do not generate <ISPF-COMMAND>  */              
+/*                              data when running a pure TSO    */              
+/*                              command                         */              
+/*                            - prevent output of nonexistent   */              
+/*                              stem variable                   */              
+/*                            - do not redirect stdout to       */              
+/*                              /dev/null on cgiutils call      */              
+/*                            - allow command to span multiple  */              
+/*                              lines                           */              
+/* $02=OA27190 2008/12/01 PV: - Reship OA24881 parts.           */              
+/* $03=OA32691 2010/04/27 HO: - Correct </ISPF-OUTPUT>          */              
+/* $04=ZOSR113 2011/01/17 HO: - Error msg for bad ISPZXENV call */              
+/* $05=ZOSV202 2013/08/29 HO: - Only attempt cgiutils on HTTP   */              
+/* $06=ZOSV202 2014/07/07 AP: - Gateway with CEA services       */              
+/*                              (V2SPFCEA)                      */              
+/* $07=28815   2014/10/07 AP: - Interactive ISPF Gateway        */              
+/*                              (comments only)                 */              
+/* $08=OA46534 2015/01/16 AP: - RPTSTG/RPTOPTS output not       */              
+/*                              treated as an error             */              
+/* $09=OA56190 2018/09/20 AP: - Handle missing /ISPF-INPUT tag  */              
+/****************************************************************/              
+*/                                                                              
+
+
+say '[ISPZXML]  active njl-mod local '
+
+
+/* invocation input : cat XML.input1|ISPZXML > ISPZXML.out */                   
+  'whence cgiutils>/dev/null && cgiutils -status 200 -ct text/plain 2>/dev/null'
+
+                                                       /*  @05C */              
+
+
+
+/* Init variable section */                                                     
+UPSERV = 'SERVICE-REQUEST'                                                      
+lowserv = 'service-request'                                                     
+inline.0 = 0                                                                    
+SERVstart = 1                                                                   
+SERVend = 1                                                                     
+ISPFTAG = 'N'                                                                   
+out.0 = 0                                                                       
+SERVstart = 0                                                                   
+SERVend   = 0                                                                   
+newline.0 = 0                                                                   
+cnt = 0                                                                         
+CEA = 'N'                                                      /*@06A*/         
+COMMAND = ''                                                   /*@06A*/         
+                                                                                
+Do Forever                                                     /*@09C*/         
+ cnt = cnt + 1                                                                  
+ Address mvs 'EXECIO 1 DISKR STDIN (STEM oneline.'                              
+ if rc = 2 then                                                /*@09A*/         
+ do                                                            /*@09A*/         
+   ErrRsn = 'ISPZxxxx'                                         /*@09A*/         
+   ErrMsg = 'INVALID XML REQUEST : ' ||,                                        
+       'TERMINATING /ISPF-INPUT RECORD NOT RECEIVED'           /*@09A*/         
+   Call ExitErr                                                /*@09A*/         
+ end                                                           /*@09A*/         
+ If (POS('<?xml version="1.0"?>',oneline.1) = 0) & (cnt = 1) Then               
+  Do                                                                            
+   ErrRsn = 'ISPZxxxx'                                                          
+   ErrMsg = 'INVALID XML REQUEST : ' ||,                                        
+       'FIRST LINE REQUIRES <?xml version="1.0"?>'                              
+   Call ExitErr                                                                 
+  End                                                                           
+ If cnt = 2 Then                                                                
+ If (POS('ISPF-INPUT',oneline.1) = 0) Then                                      
+  Do                                                                            
+   ErrRsn = 'ISPZxxxx'                                                          
+   ErrMsg = 'INVALID ISPF OR REQUEST : ' ||,                                    
+       'SECOND LINE REQUIRES ISPF-INPUT TAGS'                                   
+   Call ExitErr                                                                 
+  End                                                                           
+ inline.cnt = oneline.1                                                         
+ /* Break out of loop when terminating /ISPF-INPUT record read    */            
+ If (POS('/ISPF-INPUT',oneline.1) > 0)  Then                                    
+ Leave                                                                          
+End                                                                             
+inline.0 = cnt                                                                  
+                                                                                
+                                                                                
+                                                                                
+/* If valid XML input we need to translate into native invocation */            
+/* Say SPACE(inline.1,0) */                                                     
+ newprop = ''                                                                   
+ Do k = 1 to inline.0                                                           
+  /* test for ISPF interface XML */                                             
+  If (POS('ISPF-INPUT',inline.k) > 0)  Then                                     
+    ISPFTAG = 'Y'                                                               
+  If POS('<SERVICE-REQUEST>',inline.k) > 0 Then                                 
+   Leave                                                                        
+ End                                                                            
+ If k >= inline.0 Then                                                          
+  Do                                                                            
+   ErrRsn = 'ISPZxxxx'                                                          
+   ErrMsg = 'INVALID XML REQUEST : ' ||,                                        
+       'NO SERVICE-REQUEST TAGS LOCATED'                                        
+   Call ExitErr                                                                 
+  End                                                                           
+                                                                                
+ SERVstart = k                                                                  
+ k = k + 1                                                                      
+ Do i = k to inline.0                                                           
+                                                                                
+  If (POS('</SERVICE-REQUEST>',inline.i) > 0) Then                              
+   Do                                                                           
+    SERVend = i                                                                 
+    Leave                                                                       
+   End                                                                          
+                                                                                
+                                                                                
+  parse var inline.i '<' varname '>' value '</' endtag '>'  /* @01A */          
+  varname = TRANSLATE(varname)                                                  
+  endtag  = TRANSLATE(endtag)                               /* @01A */          
+                                                                                
+  If varname = 'SERVICE' Then                                                   
+   Do                                                                           
+    value = TRANSLATE(value)                                                    
+    If value = 'TSO' Then                                                       
+     tsoflg = 'Y'                                                               
+      Else                                                                      
+       If value = 'ISPF' Then                                                   
+        ispfflg = 'Y'                                                           
+    Iterate                                                                     
+   End                                                                          
+                                                                                
+  If varname = 'SESSION' Then                                                   
+   Do                                                                           
+    value = TRANSLATE(value)                                                    
+    If value = 'REUSE' Then                                                     
+     value = 'SPAWN'                                                            
+      Else                                                                      
+       Iterate                                                                  
+   End                                                                          
+                                                                                
+  If varname = 'REQUEST' Then                                  /*@06A*/         
+   Do                                                          /*@06A*/         
+    CEA = 'Y'                                                  /*@06A*/         
+    value = TRANSLATE(value)                                   /*@06A*/         
+   End                                                         /*@06A*/         
+                                                                                
+    If varname = 'COMMAND' | varname = 'CMDRESP' Then          /*@06C*/         
+     Do                                                                         
+      COMMAND = value                                                           
+      if endtag = '' then do                            /* @01A */              
+        Do l = i+1 to inline.0                          /* @01A */              
+          parse var inline.l value '</' endtag1 '>'     /* @01A */              
+          endtag1 = translate(endtag1)                  /* @01A */              
+          if endtag1 = '' | endtag1 = varname then do   /* @01A */              
+            COMMAND = strip(COMMAND) strip(value)       /* @01A */              
+            if endtag1 = varname then do                /* @01A */              
+              i = l                                     /* @01A */              
+              leave                                     /* @01A */              
+            End                                         /* @01A */              
+          End                                           /* @01A */              
+          else                                          /* @01A */              
+            COMMAND = strip(COMMAND) strip(inline.l)    /* @01A */              
+        End                                             /* @01A */              
+      End                                               /* @01A */              
+      Iterate                                                                   
+     End                                                                        
+                                                                                
+    If varname = 'SESSID' Then                                 /*@06A*/         
+      newprop = newprop||value                                 /*@06A*/         
+    else                                                       /*@06A*/         
+      newprop = newprop||'&'varname'='value                                     
+    Iterate                                                                     
+                                                                                
+ End                                                                            
+                                                                                
+ /* Ensure that /SERVICE-REQUEST tag was read.                       */         
+ If SERVend = 0 Then                                           /*@09A*/         
+  Do                                                           /*@09A*/         
+   ErrRsn = 'ISPZxxxx'                                         /*@09A*/         
+   ErrMsg = 'INVALID XML REQUEST : ' ||,                                        
+       'TERMINATING /SERVICE-REQUEST RECORD NOT RECEIVED'      /*@09A*/         
+   Call ExitErr                                                /*@09A*/         
+  End                                                          /*@09A*/         
+                                                                                
+ If CEA = 'N' Then                                             /*@06A*/         
+ DO                                                            /*@06A*/         
+  /* set up valid format for tso, or ispf */                                    
+  If tsoflg = 'Y' Then                                                          
+   newprop = 'TSO 'COMMAND||newprop                                             
+    Else                                                                        
+     If ispfflg = 'Y' Then                                                      
+       newprop = 'ISPF 'COMMAND||newprop                                        
+        Else                                                                    
+         parse var newprop '&' newprop                                          
+ End                                                           /*@06A*/         
+ Else                                                          /*@06A*/         
+  If COMMAND \= '' Then                                        /*@06A*/         
+    newprop = COMMAND||newprop                                 /*@06A*/         
+
+
+ 
+ newline.0 = 1                                                                  
+ newline.1 = newprop                                                            
+ /* say newprop */                                                              
+                                                                                
+                                                                                
+/* Call the Environment setup file with request input piped through */          
+/* call bpxwunix "ISPZXENV",newline.,out. */ 
+                                  
+call bpxwunix "ISPZXENV",newline.,out.,err.             /* @04C */              
+
+
+if err.0 > 0 then do                                    /* @04A */              
+  If ((Substr(err.1,1,26) <> ,                                                  
+             'Options Report for Enclave') & ,                                  
+      (Substr(err.1,1,26) <> ,                                                  
+             'Storage Report for Enclave')) Then do     /* @08A */              
+    ErrRsn = 'ISPZxxxx'                                 /* @04A */              
+    ErrMsg = 'Bad call : ' || err.1                     /* @04A */              
+    Call ExitErr                                        /* @04A */              
+    end                                                 /* @04A */              
+  end                                                   /* @08A */              
+/* call bpxwunix "cat XML2|ISPZXENV",,out. */                                   
+                                                                                
+ rline = 0                                                                      
+ sline = 0                                                     /*@06A*/         
+ qline = 0                                                                      
+ Mcnt  = 0                                                                      
+                                                                                
+ Say '<?xml version="1.0"?>'                                                    
+ Say '<ISPF-OUTPUT>'                                                            
+                                                                                
+ Do i = 1 to out.0                                                              
+  If Substr(out.i,1,9) = '<ISPINFO>' Then                                       
+   Do                                                                           
+    INFSTART = i                                                                
+    i = i + 1                                                                   
+    Do until Substr(out.i,1,10) = '</ISPINFO>'                                  
+     rline = rline + 1                                                          
+     If i = out.0 Then Leave                                                    
+                                                                                
+     /* Start of conditional select block */                                    
+     Select                                                                     
+                                                                                
+      When Substr(out.i,1,3) = 'RC=' Then                                       
+      Do                                                                        
+       parse var out.i 'RC=' rccode                                             
+       response.rline = '<RETURN-CODE>'SPACE(rccode,0)'</RETURN-CODE>'          
+      End                                                                       
+                                                                                
+      When Substr(out.i,1,4) = 'RSN=' Then                     /*@06A*/         
+      Do                                                       /*@06A*/         
+       parse var out.i 'RSN=' rsncode                          /*@06A*/         
+       response.rline = '<REASON-CODE>'SPACE(rsncode,0)'</REASON-CODE>'         
+      End                                                      /*@06A*/         
+                                                                                
+      When Substr(out.i,1,4) = 'MSG:' Then                                      
+       Do                                                                       
+        response.rline = '<REASON-CODES>'                                       
+        rline = rline + 1                                                       
+        Do until i > out.0                                                      
+         iplus = i + 1                                                          
+         If Substr(out.i,1,1) = '<' Then Leave                                  
+         If Substr(out.i,1,4) = 'MSG:' then                                     
+          Do                                                                    
+           parse var out.i 'MSG:' MSGNUM MSGTEXT                                
+           MSGTEXT = Strip(Translate(MSGTEXT,'--','>>'),'t')                    
+           response.rline = ' <REASON-CODE ID="'MSGNUM'">'MSGTEXT               
+          End                                                                   
+           Else                                                                 
+            response.rline = ' 'Strip(out.i,'t')                                
+         nextrec = Substr(out.iplus,1,4)                                        
+         If nextrec = 'MSG:' | Substr(nextrec,1,1) = '<' Then                   
+          response.rline = response.rline'</REASON-CODE>'                       
+         rline = rline + 1                                                      
+         i = i + 1                                                              
+        End                                                                     
+        response.rline = '</REASON-CODES>'                                      
+        i = i - 1                                                               
+       End                                                                      
+                                                                                
+                                                                                
+      When Substr(out.i,1,1) = '<' Then                                         
+       Do                                                                       
+        parse var out.i '<' field1 '>'                                          
+        field2 = translate(translate(field1,'-',' '))                           
+        If Substr(out.i,2,1) = '/' Then                                         
+         Do                                                                     
+          response.rline = ']]>'                                                
+          rline = rline + 1                                                     
+          response.rline = '<'field2'>'                                         
+         End                                                                    
+         Else                                                                   
+          Do                                                                    
+           response.rline = '<'field2'>'                                        
+           rline = rline + 1                                                    
+           response.rline = '<![CDATA['                                         
+          End                                                                   
+       End                                                                      
+                                                                                
+      Otherwise                                                                 
+       response.rline = ' '||out.i                                              
+                                                                                
+     End                                                                        
+     /* End of conditional select block */                                      
+                                                                                
+    i = i + 1                                                                   
+    End                                                                         
+    INFEND = i                                                                  
+   End                                                                          
+                                                                                
+  End  /* end of out.0 loop */                                                  
+                                                                                
+ Do i = 1 to out.0                                             /*@06A*/         
+  If Substr(out.i,1,14) = '<SESSION-INFO>' Then                /*@06A*/         
+   Do                                                          /*@06A*/         
+    SESSSTART = i                                              /*@06A*/         
+    sline = sline + 1                                          /*@06A*/         
+    sessinfo.sline = out.i                                     /*@06A*/         
+    i = i + 1                                                  /*@06A*/         
+    Do until Substr(out.i,1,15) = '</SESSION-INFO>'            /*@06A*/         
+     sline = sline + 1                                         /*@06A*/         
+     If i = out.0 Then Leave                                   /*@06A*/         
+     sessinfo.sline = out.i                                    /*@06A*/         
+     i = i + 1                                                 /*@06A*/         
+    End                                                        /*@06A*/         
+    sline = sline + 1                                          /*@06A*/         
+    sessinfo.sline = out.i                                     /*@06A*/         
+    SESSEND = i                                                /*@06A*/         
+   End                                                         /*@06A*/         
+ End  /* end of out.0 loop */                                  /*@06A*/         
+                                                                                
+ Say ' <SERVICE-REQUEST>'                                                       
+ Do i = SERVstart + 1 to SERVend - 1                                            
+  Say inline.i                                                                  
+ /*                                                                             
+ Do i = 1 to qline                                                              
+  Say '  '||request.i                                                           
+  */                                                                            
+ End                                                                            
+ Say ' </SERVICE-REQUEST>'                                                      
+                                                                                
+ Say ' <SERVICE-RESPONSE>'                                                      
+ st = 1                                                                         
+ If Substr(response.1,2,14) = 'ISPF COMMAND :' Then            /*@06C*/         
+ do                                                       /*@01A @06C*/         
+   Say '  <ISPF-COMMAND>'                                                       
+   parse var response.1 'ISPF COMMAND :' ispcmd                                 
+   Say '  'ispcmd                                                               
+   Say '  </ISPF-COMMAND>'                                                      
+   st = 2                                 /*@01A*/                              
+ end                                                                            
+ Else                                                          /*@06A*/         
+  If Substr(response.1,2,24) = 'Command passed to SELECT' Then /*@06A*/         
+  do                                                           /*@06A*/         
+    Say '  <ISPF-COMMAND>'                                     /*@06A*/         
+    Say '  'response.2                                         /*@06A*/         
+    Say '  </ISPF-COMMAND>'                                    /*@06A*/         
+    st = 3                                                     /*@06A*/         
+  end                                                          /*@06A*/         
+ Do i = st to rline                       /*@01A*/                              
+  Say '  '||response.i                                                          
+ End                                                                            
+ Do i = 1 to sline                                             /*@06A*/         
+  Say '  '||sessinfo.i                                         /*@06A*/         
+ End                                                           /*@06A*/         
+ Say ' </SERVICE-RESPONSE>'                                                     
+                                                                                
+ Say ' <OPERATIONS-LOG>'                                                        
+ /* include CDATA keyword so text wont be parsed by XML parser */               
+ Say ' <![CDATA['                                                               
+ /*                                                                             
+    In the DT operations log the <ISPINFO> tagged data is removed               
+    and returned as tagged <SERVICE-RESPONSE> at beginning                      
+ */                                                                             
+ Do i = 1 to out.0                                                              
+  If i = INFSTART Then                                                          
+   Do                                                                           
+    Say '  *** XML-NOTE *** Reference tagged SERVICE-RESPONSE '                 
+    i = INFEND + 1                                                              
+   End                                                                          
+  If i = SESSSTART Then                                        /*@06A*/         
+   Do                                                          /*@06A*/         
+    i = SESSEND + 1                                            /*@06A*/         
+   End                                                         /*@06A*/         
+  if i <= out.0 then                      /*@01A*/                              
+    Say '  '||out.i                                                             
+ End                                                                            
+ Say ' ]]>'                                                                     
+ Say ' </OPERATIONS-LOG>'                                                       
+                                                                                
+ Say '</ISPF-OUTPUT>'                                       /* @03C */          
+                                                                                
+ Exit 0                                                                         
+                                                                                
+ExitErr: Procedure expose ErrMsg ErrRsn ;                                       
+ Say '<?xml version="1.0"?>'                                                    
+ Say ' <ISPF-OUTPUT>'                                                           
+ Say '  <RETURN-CODE>'8'</RETURN-CODE>'                                         
+ Say '  <REASON-CODES>'                                                         
+ Say '   <REASON-CODE ID="'ErrRsn'">'ErrMsg                                     
+ Say '  </REASON-CODES>'                                                        
+ Say ' </ISPF-OUTPUT>'                                                          
+Exit 8                                                                          

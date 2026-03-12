@@ -1,0 +1,19 @@
+DATMAPM  DFHMSD TYPE=&SYSPARM,MODE=INOUT,LANG=COBOL,                   X
+               STORAGE=AUTO,TIOAPFX=YES,DSATTS=(COLOR,HILIGHT),        X
+               MAPATTS=(COLOR,HILIGHT)
+DATMLIS  DFHMDI SIZE=(24,80),CTRL=(PRINT,FREEKB)
+HI       DFHMDF POS=(1,24),LENGTH=30,                                  X
+               ATTRB=(ASKIP,NORM),COLOR=YELLOW,HILIGHT=OFF
+         DFHMDF POS=(4,18),LENGTH=32,                                  X
+               INITIAL='CICS DEMO APP',                                X
+               ATTRB=(ASKIP,NORM),HILIGHT=OFF,COLOR=GREEN
+DATMLIS DFHMSD TYPE=FINAL
+        END
+* NOTE: VSCODE BY DEFAULT DOES NOT REGOGINZE THE BMS EXT.
+* USING .ASM and ADDED A RULE IN BMS.YAML to PICK BMS AT THE FOLDER
+* AND IN ASM AT THE FOLDER NOT BY EXT!
+* THE GENERATED COPYBOOK NEED TO BE ADDED TO THOS REPOS COPYBOOK
+* BY HANDFOLDER
+* or set up the propery cfg to pick up the mvs pds *.bms.copy member
+
+*      DFHMDF POS=(1,24),LENGTH=32,INITIAL='Nelsons Map test v1',      X

@@ -1,0 +1,170 @@
+---
+### 
+# The main DBB config files (bootstrap). It defines the variables to build all apps (v1a)
+# - has support for cli --encoding to enable/disable based on a lifecycle definition. The file lifecycle as an example using hte cli option/groovy script 
+# - See the cobol.yaml as another, simpler  way to encode logs 
+# - supports non-buildable impact processing for file like JCL, Procs using iebgener.yaml language ge file 
+# - support reference to common copybooks 
+# - used db2 metadata - see metainit and conf/dbb3/ddl ssid dbd1 (Disabled for now)
+
+# - trace util done see traceVar in .profile   and groovy 
+
+# Include all language yamls 
+version: 1.0.0
+include: 
+  - file: Languages.yaml
+
+### 
+# Build lifecycle jobs (CLI job name 'dbb build jobname ...')
+###   
+lifecycles:
+
+  # build single programs from the command line
+  - lifecycle: file
+
+    # define an option for this lifecycle to accept a log encoding arg like UTF-8 for pipeline to show sysprints  in a pipeline 
+    cli:
+      options:
+        - longOption: "encoding"
+          hasArg: true
+    
+    # define the list of tasks to execute during the build lifecycle
+    tasks:
+      - Start
+      - FileAnalysis
+      - Languages       # Defined in Languages.yaml      
+      - Finish
+
+  # build all programs for the application
+  - lifecycle: full
+
+   # define an option for this lifecycle to accept a log encoding arg like UTF-8 for pipeline to show sysprints  in a pipeline 
+    cli:
+      options:
+        - longOption: "encoding"
+          hasArg: true
+    
+    # define the list of tasks to execute during the build lifecycle
+    tasks:
+      - Start
+      - ScannerInit
+      - MetadataInithek
+      - FullAnalysis
+      - Languages    # Defined in Languages.yaml      
+      - Finish
+
+  # user build for a single program 
+  - lifecycle: user
+    variables:
+      - name: userbuild
+        value: true
+
+    # CLI options specific to userbuild
+    cli:
+      usage: dbb build user [arguments] [options]
+      options:
+        - longOption: "dependencyFile"
+          hasArg: true
+          description: "JSON dependency file provided by an IDE used to skip the execution of the DBB scanner."
+        - longOption: "errPrefix"
+          hasArg: true
+          description: "Error prefix for writing error feedback to the Remote Error List view."
+    
+    # define the list of tasks to execute in this lifecycle
+    # Dont add cli encoding for user build take null or default ibm1047    
+    tasks:
+      - Start
+      - ScannerInit
+      - FileAnalysis
+      - Languages     
+      - Finish
+
+
+  # build only programs impacted by changes for the application
+  - lifecycle: impact
+
+    # Optional argument to supply base line references for calculating change files
+    # See https://www.ibm.com/docs/en/dbb/3.0?topic=index-task-impactanalysis
+    cli:
+      usage: dbb build impact [arguments] [options]
+      options:
+        - longOption: "baselineRef"
+          hasArg: true
+          description: "Optional override to DBB's default metadata commit point for git diff."
+
+         # define an option for this lifecycle to accept a log encoding arg like UTF-8 for pipeline to show sysprints  in a pipeline 
+        - longOption: "encoding"
+          hasArg: true
+    
+    # define the list of tasks or collection of tasks in a stage like languages, to execute during the build lifecycle
+    # The order matters: Start, Scan and Meta must come before Impact and Languages 
+    tasks:      
+      - Start      
+      - ScannerInit
+      - MetadataInit      
+      - ImpactAnalysis 
+      - Languages                  
+      - EnVars          # custom groovy script to trace env vars/ See ./conf/build/groovy 
+      - Finish      
+         
+
+    
+      
+#########################################################################
+# Basic task configurations that can be referenced by multiple lifecycles
+#########################################################################
+tasks:
+
+  # basic build initialization task
+
+  # The default var "sourceDirs:" path is the root folder of all cloned repo(s) 
+  # This project has 2 repos, a main source app and a Commo repo for shared copybooks
+  # Clone the Common under the main App_DIR Var
+  # The Cobol.yaml>dependencySearchPath refers all folders matching search:${WORKSPACE}/?path=${APP_DIR_NAME}/**/*.cpy;     
+  # Ref: https://www.ibm.com/docs/en/dbb/3.0?topic=index-task-start#task-dependency-list
+  - task: Start         
+  
+  # initialize db2 metadata store  
+  # preReq: Run my  DBBZ Schema DDL in WaaS-Init phase 
+  # Ref: https://www.ibm.com/docs/en/dbb/3.0?topic=index-task-metadatainit
+  - task: MetadataInit
+    variables: 
+      # - name: type                        # metadata store types "file" (zFS .dbb) or "db2" (DBBZ@DBD1LOC).
+      - name: MetadataStoreType             # above is broken use this for now 
+        value: file
+
+      ## Note: this works and DBB db2 tables created but whenever my test acct's password expires I have to regen the encryptyed password
+      ##       so disable for now 
+      #  value: db2
+      #- name: db2Conf        
+      #  value: /u/ibmuser/zdevops/conf/build/db2Connection.conf  #My copy in ZDEVOPS_CONF see .profile 
+
+
+
+  # initialize dependency scanners
+  - task: ScannerInit
+  
+  # initialize ImpactAnalysis (addedby njl) 
+  - task: ImpactAnalysis 
+  
+  # create simple build list
+  - task: FileAnalysis
+  
+  # create full build list
+  - task: FullAnalysis
+    
+  # build finalization
+  - task: Finish
+
+    # extending this task with a custom log encoding groovy task - https://www.ibm.com/docs/en/dbb/3.0?topic=tutorials-creating-custom-task
+    #variables:
+    #  - name: logEncoding
+    #    value: "IBM-1047"
+    #    select:
+    #      - condition: { exists: "CLI_LOG_ENCODING" }
+    #        value: "${CLI_LOG_ENCODING}"
+  
+  # default empty Languages stage
+  # to be replaced by content of Languages.yaml
+  - stage: Languages
+    tasks:

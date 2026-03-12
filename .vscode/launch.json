@@ -1,0 +1,21 @@
+{
+    // This file is used to configure debugging settings for your project. 
+    // It defines how VS Code launches your application, what parameters it uses, and how it attaches to running processes
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+
+    "version": "0.2.0",
+    "configurations": [        
+ 
+        {
+            // An Open Debug request to list all parked sessions- batch and CICS 
+            "type": "zOpenDebug",
+            "request": "attach",
+            "name": "(F5) List parked sessions",
+            "connection": {
+                "type": "zowe",
+                "name": "zOpenDebug"
+            }
+        }
+    ]
+}

@@ -1,0 +1,66 @@
+{
+    "$schema": "./zowe.schema.json",
+    "Nelsons-Notes": [
+        "- Zowe does not honor local .ssh/config. So you'll need to repeat them here '-port, -i keyfile ...'",
+        "- On `connection refused` error, check that the RSEAPI or zOSMF Service(STC/Daemon) is active and on the right port and firewall open on host vm.",
+        "- For `Rest API failures with HTTP(S) status 404` review all properties and proper JSON syntax. ",
+        "- For 'Received HTTP(S) error 403 = Forbidden.'  Check if JMON is active.",
+        "- VS Code caches properties that can create issues like updating credentials or switching hosts. refresh the cache with 'cntl/P  >'  reload window.",
+        "- On TAZ/ODE, RCE uses the zOS dns name like std1.ibm.com so I added that to my local /etc/hosts as an rse host - may not be an issue after all???.",
+        "- If the cics profile errors out, run (f1) `zowe explorer: update profile ... or update the zowe.schema add cics",
+        " TODO: This is an RSE based model. It can be replace with 'type: zosmf' which requires an additional 'type: ssh' profile.  Notes pending ... "
+    ],
+    "profiles": {
+        "rse": {
+            "type": "rse",
+            "COMMENT0": "For zOSMF, change the above type and profile name to zosmf. And add an ssh profile and conf local keys.",
+            "properties": {
+                "port": 8195                
+            }
+        },
+        "cics": {
+            "type": "cics",
+            "COMMENT1": "CICS explorer uses the CICS TCPIPSERVICE STD$WUTC(CMCI) port - get it from the CICS STC sysout.",
+            "properties": {
+                "port": 8154
+            }
+        },
+        "zOpenDebug": {
+            "type": "zOpenDebug",
+            "properties": {
+                "COMMENT2": "DPS (Profile service) port connect to the EQAPROF STC",
+                "dpsPort": 8192,
+                "dpsContextRoot": "api/v1",
+                "dpsSecured": false,
+                "COMMENT3": "RDS (Remote Client service) port connect to the EQARMTD STC. SECURED. See eqahcc.env for CCS port accessed by RDS ",
+                "rdsPort": 8193,
+                "rdsSecured": false,
+                "COMMENT4": " HCC Notes: Im using the EQAHCC STC which has 2 ports. One to collect (8080) one to view (8081)",
+                "authenticationType": "basic",
+                "uuid": "1959edc3-5bcf-4912-8569-0a115f0a2f38",
+                "COMMENT4b": " IVP the STC from a browser with http://zos:8081/ccaas/ping   use netstat on z to verifu the ports",
+                "COMMENT4c": " Use this as the VSC/CC/UI Coverage Results URL http://zos:8081/ccaas"
+            }
+        },
+        "project_base": {
+            "type": "base",
+            "properties": {
+                "protocol": "https",
+                "rejectUnauthorized": false,
+                "basePath": "rseapi",
+                "COMMENT4": "Using my fyre (TAZ/ODE) VM",
+                "host": "zos"
+            },
+            "secure": [
+                "user",
+                "password"
+            ]
+        }
+    },
+    "autoStore": true,
+    "defaults": {
+        "base": "project_base",
+        "rse": "rse",
+        "zOpenDebug": "zOpenDebug"
+    }
+}

@@ -1,0 +1,30 @@
+version: 1
+
+formatters:
+   default:
+      format: '%(asctime)s - %(levelname)-5s - %(message)s'
+      datefmt: '%Y-%m-%d %H:%M:%S'
+      
+handlers:
+   console:
+      class: logging.StreamHandler
+      level: INFO
+      formatter: default
+      stream: ext://sys.stdout
+   file:
+      class : logging.handlers.RotatingFileHandler
+      formatter: default
+      filename: message.log
+      maxBytes: 1024000
+      backupCount: 3
+      
+root:
+   level: NOTSET
+   handlers: [console]
+   propagate: yes
+   
+loggers:
+   log-deploy:
+      level: DEBUG
+      handlers: [file]
+      propagate: no

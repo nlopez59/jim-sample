@@ -1,0 +1,154 @@
+/* REXX */                                                                      
+/****************************************************************/              
+/*    Licensed Materials - Property of IBM                      */              
+/*    5655-ZOS                                                  */              
+/*    Copyright IBM Corp. 2008, 2023                            */              
+/*                                                              */              
+/* This REXX routine is invoked by the "TSO/ISPF Client         */              
+/* Gateway" XML API ISPZXML to set up values for environment    */              
+/* variables and invoke the interface module ISPZINT.           */              
+/*                                                              */              
+/* The values of the environment variables in this routine      */              
+/* may require customization.                                   */              
+/*                                                              */              
+/* $01=ZOSV202 2014/07/03 JM: Add CGI_ISPPREF (FIN OA45389)     */              
+/* $02=31942   2015/02/23 AP: Add CGI_CEATSO                    */              
+/* $03=OA50812 2016/07/06 AP: Raise length limit on CGI_ISPWORK */              
+/*                            (SYSROUTE OA50837)                */              
+/* $04=OA52684 2017/04/10 AP: Add Support for CGI_ISPDEBUG_MIN  */              
+/*                            (SYSROUTE OA52506)                */              
+/* $05=63088   2017/10/19 AP: Clarify CGI_ISPPREF description   */              
+/* $06=OA55913 2018/07/20 AP: Improved Gateway debug            */              
+/* $07=OA57709 2019/03/06 AP: Support for HTTP log limiting     */              
+/*                            (SYSROUTE of OA56895)             */              
+/* Flag Reason   Release  Date   Origin    Description          */              
+/* ---- -------- -------- ------ --------  -------------------  */              
+/* $08= OA63977  ZOSV204  221207 kangelo   Add CGI_PING         */              
+/****************************************************************/              
+                                                                                
+/* Customize the variables below to control the configuration   */              
+/* and behavior of the "TSO/ISPF Client Gateway".               */              
+                                                                                
+/*                                                                              
+The Environment variable CGI_CEATSO specifies whether the Legacy ISPF           
+Gateway or the Interactive ISPF Gateway is invoked.                             
+Specify TRUE for the Interactive ISPF Gateway. Specify a value other            
+than TRUE for the Legacy ISPF Gateway.                                          
+*/                                                                              
+CGI_CEATSO = 'FALSE'                                      /*@02A*/              
+/*                                                                              
+The variable CGI_PING is only used in Interactive to PING                       
+when we Reuse a session. Otherwise it will not PING.                            
+The value needs to be 'TRUE' to do so.                                          
+*/                                                                              
+CGI_PING = 'FALSE'                                        /*@08A*/              
+/*                                                                              
+The STEPLIB should specify the data set(s) containing the load modules for      
+the "TSO/ISPF Client Gateway".                                                  
+If these modules reside in the LINKLIST then set STEPLIB to '' .                
+*/                                                                              
+STEPLIB = 'ISP.SISPLPA:ISP.SISPLOAD'                                            
+/*                                                                              
+The Environment variable CGI_ISPCONF determines the HOME directory              
+path where the configuration files reside for the "TSO/ISPF Client Gateway".    
+This was determined by the install directory specified in the install           
+job ISPZINS1. By default /etc/ispf .                                            
+This environment variable is used only by the Legacy ISPF Gateway.              
+*/                                                                              
+CGI_ISPCONF = '/etc/ispf'                                                       
+/*                                                                              
+The Environment variable CGI_ISPWORK specifies the pathname of the              
+directory where work files for the gateway are stored.                          
+This was determined by the install directory specified in the install           
+job ISPZINS1. By default /var/ispf .                                            
+The value must be no longer than 80 characters.                                 
+This environment variable is used only by the Legacy ISPF Gateway.              
+*/                                                                              
+CGI_ISPWORK = '/var/ispf'                                                       
+/*                                                                              
+The Environment variable CGI_ISPPREF specifies the prefix to be used to         
+allocate cataloged z/OS work files for the "TSO/ISPF Client Gateway".           
+It supports the use of system variables &SYSUID, &SYSPREF and &SYSNAME.         
+The prefix must resolve to a value of 35 characters or less.                    
+By default &SYSPREF..ISPF.VCMISPF .                                             
+This environment variable is used only by the Legacy ISPF Gateway.              
+*/                                                                              
+CGI_ISPPREF = '&SYSPREF..ISPF.VCMISPF'                         /*@01A*/         
+/*                                                                              
+The Environment variable CGI_ISPLOGLEVEL specifies the level of logging         
+performed by the "TSO/ISPF Client Gateway". Specify a non-zero value to         
+activate more than the default logging. Add logging level values                
+together to request multiple types of logging information.                      
+  1 = Log debug information. Provides information about the request             
+      processing that can be useful when debugging problems.                    
+      Equivalent to specifying CGI_ISPDEBUG='TRUE'. If either variable          
+      requests debug information, it overrides the setting of the               
+      other variable.                                                           
+  2 = Controls whether the list of defined environment variables is             
+      written to STDOUT. Include this logging level if you do not want          
+      the list of environment variables written to STDOUT. This can             
+      result in improved performance for a client that has many                 
+      environment variables defined.                                            
+      Equivalent to specifying CGI_ISPDEBUG_MIN='TRUE'. If either               
+      variable requests environment variable exclusion, it overrides            
+      the setting of the other variable.                                        
+  4 = Include time stamps. Causes a time stamp value to be included in          
+      some lines of log information.                                            
+  8 = Include additional log information when the gateway is invoked            
+      via HTTP. This log level should be included only when debugging           
+      gateway problems in the HTTP environment.                                 
+This environment variable is used only by the Legacy ISPF Gateway.              
+*/                                                                              
+CGI_ISPLOGLEVEL = '0'                                          /*@06A*/         
+/*                                                                              
+The Environment variable CGI_ISPDEBUG specifies whether debug                   
+information is included in the log information produced by the                  
+"TSO/ISPF Client Gateway". Provides information about the request               
+processing that can be useful when debugging problems. Specify TRUE             
+to include debug information in the log information.                            
+This environment variable is used only by the Legacy ISPF Gateway.              
+NOTE: CGI_ISPLOGLEVEL is recommended as a replacement for this variable.        
+      If either variable requests debug information, it overrides the           
+      setting of the other variable.                                            
+*/                                                                              
+CGI_ISPDEBUG = 'FALSE'                                         /*@06A*/         
+/*                                                                              
+The Environment variable CGI_ISPDEBUG_MIN specifies whether the list of         
+defined environment variables is written to STDOUT by the "TSO/ISPF             
+Client Gateway". Specify TRUE if you do not want the list of environment        
+variables written to STDOUT. This can result in improved performance for        
+a client that has many environment variables defined.                           
+This environment variable is used only by the Legacy ISPF Gateway.              
+NOTE: CGI_ISPLOGLEVEL is recommended as a replacement for this variable.        
+      If either variable requests environment variable exclusion, it            
+      overrides the setting of the other variable.                              
+*/                                                                              
+CGI_ISPDEBUG_MIN = 'FALSE'                                     /*@04A*/         
+/*    */                                                                        
+/* SAMPLE USEAGE */                                                             
+/*                                                                              
+   Command to invoke the XML API ISPZXML:                                       
+              cat ispf.input|ISPZXML >ISPF.output                               
+    - passes XML input in ispf.input to ISPZXML                                 
+    - ISPZXML calls ISPZXENV to set up the environment and invoke interface     
+      module ISPZINT                                                            
+    - output from the interface converted to XML which is wriiten to file       
+      ISPF.output                                                               
+*/                                                                              
+                                                                                
+/* DO NOT ALTER BELOW */                                                        
+                                                                                
+CALL ENVIRONMENT 'CGI_CEATSO',CGI_CEATSO                       /*@02A*/         
+CALL ENVIRONMENT 'STEPLIB',STEPLIB                                              
+CALL ENVIRONMENT 'CGI_ISPCONF',CGI_ISPCONF                                      
+CALL ENVIRONMENT 'CGI_ISPWORK',CGI_ISPWORK                                      
+CALL ENVIRONMENT 'CGI_ISPPREF',CGI_ISPPREF                     /*@01A*/         
+CALL ENVIRONMENT 'CGI_ISPLOGLEVEL',CGI_ISPLOGLEVEL             /*@06A*/         
+CALL ENVIRONMENT 'CGI_ISPDEBUG',CGI_ISPDEBUG                   /*@06A*/         
+CALL ENVIRONMENT 'CGI_ISPDEBUG_MIN',CGI_ISPDEBUG_MIN           /*@04A*/         
+CALL ENVIRONMENT 'CGI_PING',CGI_PING                           /*@08A*/         
+                                                                                
+/* Invoke module ISPZINT */                                                     
+'ISPZINT'                                                                       
+                                                                                
+EXIT                                                                            
